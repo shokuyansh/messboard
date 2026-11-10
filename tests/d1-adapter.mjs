@@ -12,13 +12,14 @@ export function testDatabase(filename = ':memory:') {
     bind(...args) { return statement(sql, args); },
     async first() { return sqlite.prepare(sql).get(...values) || null; },
     async all() { return { results: sqlite.prepare(sql).all(...values), success: true }; },
-    async run() { const result = sqlite.prepare(sql).run(...values); return { success: true, meta: { changes: Number(result.changes) } }; },
+    runSync() { const result = sqlite.prepare(sql).run(...values); return { success: true, meta: { changes: Number(result.changes) } }; },
+    async run() { return this.runSync(); },
   });
   return {
     sqlite, prepare: statement,
     async batch(statements) {
       sqlite.exec('BEGIN');
-      try { const results = []; for (const item of statements) results.push(await item.run()); sqlite.exec('COMMIT'); return results; }
+      try { const results = []; for (const item of statements) results.push(item.runSync()); sqlite.exec('COMMIT'); return results; }
       catch (error) { sqlite.exec('ROLLBACK'); throw error; }
     },
     close() { sqlite.close(); },

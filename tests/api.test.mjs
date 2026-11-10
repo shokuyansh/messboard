@@ -14,7 +14,7 @@ function fixture(t) {
     return { status: response.status, data: await response.json() };
   }
   const bootstrap = identity => request(identity, 'bootstrap', 'POST', {});
-  const profile = (identity, roll) => request(identity, 'profile', 'PATCH', { name: identity.displayName, roll, hostel: 'Hostel A' });
+  const profile = (identity, roll) => request(identity, 'profile', 'PATCH', { name: identity.displayName, roll });
   return { db, request, bootstrap, profile };
 }
 
@@ -47,7 +47,7 @@ test('profile validation and unique roll numbers are enforced in the database', 
   assert.equal((await f.profile(alice, 'b124001')).status, 200);
   assert.equal((await f.profile(bob, 'B124001')).status, 409);
   assert.equal((await f.profile(bob, "DROP TABLE students;")).status, 400);
-  assert.equal((await f.request(alice, 'profile', 'PATCH', { name: 'Alice', roll: 'B124001', hostel: 'Hostel A', role: 'admin' })).status, 200);
+  assert.equal((await f.request(alice, 'profile', 'PATCH', { name: 'Alice', roll: 'B124001', role: 'admin' })).status, 200);
   assert.equal((await f.request(alice, 'state')).data.profile.role, 'student');
 });
 
@@ -78,22 +78,20 @@ test('students cannot read or mutate another student’s bookings and attendance
   assert.deepEqual((await f.request(bob, `state?studentId=${alice.userId}`)).data.bookings, {});
 });
 
-test('payment simulations use the server bill amount and cannot be recorded twice', async t => {
+test('students see pending bills and cannot settle them through the removed payment endpoint', async t => {
   const f = fixture(t); await f.bootstrap(alice); await f.profile(alice, 'B124001');
-  const attempts = await Promise.all([f.request(alice, 'payments/simulate', 'POST', { month: '2026-11', amount: 1 }), f.request(alice, 'payments/simulate', 'POST', { month: '2026-11' })]);
-  assert.deepEqual(attempts.map(item => item.status).sort(), [200, 409]);
+  assert.equal((await f.request(alice, 'payments/simulate', 'POST', { month: '2026-11' })).status, 404);
   const state = (await f.request(alice, 'state')).data;
-  assert.equal(state.payments.length, 1); assert.equal(state.payments[0].amount, 3200);
-  assert.match(state.payments[0].id, /^SIM-/);
-  assert.equal((await f.request(alice, 'payments/simulate', 'POST', { month: '2025-01' })).status, 409);
+  assert.deepEqual(state.bills, [{ month: '2026-11', amount: 3200, status: 'pending' }]);
+  assert.equal('payments' in state, false);
+  assert.equal('hostel' in state.profile, false);
 });
 
-test('admin billing updates pending bills, preserves paid amounts, and applies to new students', async t => {
-  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice); await f.profile(alice, 'B124001');
-  await f.request(alice, 'payments/simulate', 'POST', { month: '2026-11' });
+test('admin billing updates monthly charges and applies to new students', async t => {
+  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice);
   assert.equal((await f.request(admin, 'admin/bills', 'POST', { month: '2026-11', amount: 3500 })).status, 200);
   assert.equal((await f.request(admin, 'state')).data.bills[0].amount, 3500);
-  assert.equal((await f.request(alice, 'state')).data.bills[0].amount, 3200);
+  assert.equal((await f.request(alice, 'state')).data.bills[0].amount, 3500);
   assert.equal((await f.bootstrap(bob)).data.bills[0].amount, 3500);
   assert.equal((await f.request(alice, 'admin/bills', 'POST', { month: '2026-11', amount: 0 })).status, 403);
 });

@@ -1,95 +1,161 @@
-# IIIT Bhubaneswar Mess Hub — Vercel edition
+# IIIT Bhubaneswar Mess Management
 
-The full mess management application adapted for **Vercel**, with a plain HTML/CSS/JavaScript frontend, a Node.js serverless API and a persistent Turso/libSQL database.
+A web application for managing campus mess meals, attendance and monthly bills. Students can plan their meals and track their records, while administrators manage menus, accounts, billing and feedback from a shared dashboard.
 
-This folder is independent of the existing Cloudflare/Sites deployment. It contains no Cloudflare bindings or platform-specific sign-in dependency. Booking, attendance, billing, feedback, menus and administration features are retained.
+The campus meal-board interface uses horizontal navigation, numbered meal rows and a warm paper, ink and orange palette. The frontend uses HTML, CSS and vanilla JavaScript. A Node.js API handles authentication and mess operations, with records stored in a Turso/libSQL database. The project is configured for deployment on Vercel.
+
+This is an independent student project and is not an official institute service.
+
+## Features
+
+### Students
+
+- Register and sign in with an email and password.
+- Maintain a profile with a name and unique roll number.
+- View the weekly breakfast, lunch and dinner menus.
+- Book or skip individual meals from today up to 30 days ahead.
+- Check in for today's booked meals and view attendance history.
+- View pending monthly bills and a reminder to clear dues with the mess manager by the end of the month.
+- Submit rated feedback and read mess announcements.
+
+### Administrators
+
+- Review bookings and attendance for a selected date.
+- Edit the shared weekly menu.
+- View student profiles, change account roles and activate or deactivate accounts.
+- Issue monthly bills and correct pending charges.
+- Review feedback and update its status.
+- Publish and remove announcements.
+
+## How it works
+
+The browser sends requests to `/api/*`. The API identifies the signed-in account through a session cookie, checks permissions and reads or updates the database. Student records belong to the authenticated account; administrative actions require an administrator role stored in the database.
+
+Locally, the application uses a SQLite file under `.data/`. On Vercel, it connects to a hosted Turso/libSQL database so records persist across deployments. SQL migrations in `drizzle/` create and update the tables.
+
+Meal dates follow **Asia/Kolkata**. Each student can have one booking and one attendance entry per meal per day. A meal cannot be changed after check-in.
 
 ## Run locally
 
-Requires Node.js 22 and npm.
+Requires **Node.js 22** and npm. From the project directory:
 
 ```bash
 npm ci
 cp .env.example .env.local
 ```
 
-Edit `.env.local` and set `ADMIN_EMAIL` to your email and `ADMIN_PASSWORD` to a unique password of at least 12 characters. Leave `TURSO_DATABASE_URL=file:.data/mess.db` for local SQLite development.
+Edit `.env.local`:
+
+```dotenv
+TURSO_DATABASE_URL=file:.data/mess.db
+TURSO_AUTH_TOKEN=
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=replace-with-a-unique-password
+```
+
+Use your own administrator email and a password between 12 and 128 characters. The token can stay empty when using the local SQLite file.
+
+Start the application:
 
 ```bash
 npm run dev
 ```
 
-Open **http://127.0.0.1:3000**. Sign in with the configured administrator credentials. The first successful administrator login creates the reserved admin account; public registration cannot claim that email. Complete the profile and use **Administration**. Other users create student accounts through the registration form.
+Open **http://127.0.0.1:3000**. Pending database migrations run automatically at startup. Add `PORT=3001` to `.env.local` if you need a different port.
 
-The local server applies pending migrations automatically. Local SQLite records persist under `.data/`. To choose another local port, set `PORT` in `.env.local`.
+### First login
+
+Use **Sign in** with the administrator email and password from your environment settings. The first successful login creates the administrator account. That email is reserved and cannot be claimed through student registration.
+
+Students use **Student registration** to create their accounts. After signing in, complete the profile with a roll number before booking meals.
+
+Once the administrator account exists, changing `ADMIN_PASSWORD` in the environment does not change its stored password. Password recovery is not implemented.
 
 ## Deploy to Vercel
 
-Deployment requires an authenticated Vercel account and a persistent hosted database. The project is prepared locally; it has not been published to Vercel yet.
+### 1. Create the database
 
-1. Create/import this folder as a Vercel project. Select the **Other** framework preset. `vercel.json` supplies the build command, output directory, API rewrite and security headers.
-2. Add a **Turso Cloud** database through Vercel Marketplace and connect it to the project. Use a free plan if available; do not activate a paid plan unintentionally.
-3. Confirm that the database integration supplied `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` to the project's production environment. The database must use a `libsql://` or `https://` URL.
-4. Add `ADMIN_EMAIL` and a strong `ADMIN_PASSWORD` as sensitive environment values. The email is reserved from student registration. The password initializes the first admin account and is subsequently stored as a salted password hash in the database.
-5. Deploy. `npm run build` validates the required settings and applies pending SQL migrations before the frontend and API are published.
-6. Open the returned deployment URL and sign in with the administrator credentials. New students can then register their own accounts.
+Create a hosted **libSQL** database in Turso. Copy its database URL and generate a database authentication token with read/write access. The URL should start with `libsql://` or `https://`.
 
-If deploying from your terminal:
+The application already includes `@libsql/client`. Leave the new database empty; the build will create the tables.
 
-```bash
-npx vercel login
-npx vercel link
-# Connect the database and configure the four environment values in Vercel.
-npm run deploy
-```
+### 2. Import the GitHub repository
 
-Do not put production credentials in `vercel.json`, client JavaScript, Git or the ZIP archive. Configure environment values for previews as well if preview deployments need to use the backend; use a separate preview database to keep preview migrations and records away from production.
+In Vercel, import the repository containing this project's `package.json` and `vercel.json`. Use these settings:
 
-Vercel deployments explicitly refuse file-based or in-memory databases. Using temporary serverless disk storage would lose records across instances or deployments. Locally, a file database is supported for development.
+| Setting | Value |
+| --- | --- |
+| Framework preset | Other |
+| Root directory | Repository root, or this project's subdirectory if using a monorepo |
+| Node.js version | 22.x |
+| Build command | `npm run build` |
+| Output directory | `public` |
 
-Changing the `ADMIN_PASSWORD` environment value after the admin account is created does not replace the stored password. Manage existing credentials through a controlled database/account recovery process. Email verification, password reset emails and real payment collection are not implemented.
+`vercel.json` defines API routing, response headers and the Mumbai function region (`bom1`). Keep the Turso database in Mumbai as well to reduce database round-trip latency.
 
-The database starts with shared sample menus and a sample ₹3,200 monthly charge. Existing records from the Cloudflare/Sites deployment are not copied into this separate database.
+### 3. Add environment variables
 
-## Verification
+Set these values for the **Production** environment before deploying:
 
-```bash
-npm test
-npm run build
-```
+| Variable | Value |
+| --- | --- |
+| `TURSO_DATABASE_URL` | The hosted database URL, such as `libsql://iiit-mess-your-org.turso.io` |
+| `TURSO_AUTH_TOKEN` | A read/write authentication token for that database |
+| `ADMIN_EMAIL` | The email used for the initial administrator login |
+| `ADMIN_PASSWORD` | A unique administrator password between 12 and 128 characters |
 
-The project has **22 API tests**: 13 mess-management tests and 9 account/database integration tests. These cover student isolation, admin authorization, password/session hashing, reserved admin registration, logout, session expiry, account deactivation, CSRF checks, login attempt limits, API rewriting, atomic SQL rollback, migrations, billing and duplicate prevention.
+Store credentials in Vercel's environment settings. `.env.local` is excluded from Git. File-based and in-memory database URLs are rejected on Vercel because they cannot provide persistent application storage.
 
-Browser checks cover student registration, profile updates, bookings, attendance, feedback, logout/login, separate admin access, admin review, cross-account visibility, persistence after clearing browser storage and mobile layouts. Local verification is complete; a Vercel deployment still requires account access and hosted database provisioning.
+### 4. Deploy and sign in
 
-## Structure
+Deploy the project. The build validates the configuration and applies pending database migrations. Open the deployment URL and sign in with your configured administrator credentials.
+
+If you change environment values after a deployment, redeploy to apply them. Preview deployments also need environment values to build and use the API; give previews a separate database to keep test records and migrations away from production.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the local frontend and API; apply pending migrations |
+| `npm test` | Run the API and account/database tests |
+| `npm run build` | Check application files and configuration; apply pending migrations |
+| `npm run db:migrate` | Apply pending migrations to the configured database |
+| `npm run deploy` | Deploy to production through the Vercel CLI; requires login and project setup |
+
+The tests cover account registration, administrator access, student record isolation, sessions, booking and billing rules, duplicate prevention, request validation and migration behavior.
+
+## Project structure
 
 ```text
-public/index.html         HTML interface
-public/styles.css         Responsive design
-public/app.js             Vanilla JS UI and API requests
-api/index.js              Vercel Node.js fetch entrypoint
-lib/app-handler.js        Routing and server-side session identity
-lib/auth.js               Account registration, passwords and sessions
-lib/database.js           Persistent SQL client and query adapter
-lib/mess-api.js           Existing mess-management business logic
-drizzle/                  Versioned SQL migrations
-scripts/migrate.mjs       Checksum-verified, repeatable migrations
-scripts/build.mjs         Deployment validation and database migrations
-scripts/dev.mjs           Local frontend/backend server
-tests/                    Business logic and account integration tests
-vercel.json               Vercel build, routing and security configuration
+api/index.js          Vercel API entry point
+public/               HTML, CSS, browser JavaScript and favicon
+lib/auth.js           Registration, passwords and sessions
+lib/app-handler.js    API routing and session identity
+lib/mess-api.js       Meal, attendance, billing and administration logic
+lib/database.js       libSQL connection and query adapter
+drizzle/              Versioned SQL migrations
+scripts/              Local server, build checks and migration runner
+tests/                API and account/database tests
+vercel.json           Vercel build, routing and header configuration
 ```
 
-Student identity comes only from a database-backed session cookie. Client-provided identity headers and role values are ignored. Cookies use HttpOnly and SameSite=Lax; HTTPS deployments also use Secure and the `__Host-` prefix. Passwords use salted scrypt hashes, and only hashes of session tokens are stored in SQL. Account login attempts are limited per email address. All administrative operations check the stored database role.
+Migration `0003_pending_bills_and_profiles.sql` removes hostel data and returns old simulated bills to pending while retaining their amounts. Simulated receipts and activity entries are removed because they were not real payments.
 
-The API is exposed under `/api/*`. Authentication uses POST `/api/auth/register`, `/api/auth/login` and `/api/auth/logout`. The remaining student/admin API endpoints are the same as the original dynamic application. Every write requires JSON, a same-origin request and `X-Mess-Request: 1`.
+Booking and check-in responses include the confirmed record, so the browser updates the meal without fetching the entire workspace again. Each save uses one session lookup and one transaction for the meal record and activity entry. Workspace reads are batched into one database request.
 
-Payments remain **explicit simulations**. Records and receipts are saved in SQL, but no money is collected. Student attendance is self-reported.
+Add new SQL migration files when changing the schema. Applied migrations are tracked by checksum; editing an applied file causes the migration runner to stop.
 
-## Platform references
+## Authentication and access
 
-- [Vercel Node.js functions](https://vercel.com/docs/functions/runtimes/node-js)
-- [Vercel rewrites](https://vercel.com/docs/routing/rewrites)
-- [Turso Cloud on Vercel Marketplace](https://vercel.com/marketplace/tursocloud)
-- [Turso/libSQL JavaScript client](https://docs.turso.tech/sdk/ts/reference)
+Passwords are stored as salted scrypt hashes. Sessions expire after seven days, and the database stores hashes of session tokens. Session cookies use `HttpOnly` and `SameSite=Lax`, with `Secure` enabled over HTTPS.
+
+Email syntax is checked in the browser and API, with inline errors on sign-in and registration. This does not verify mailbox ownership. The API checks account roles on the server, limits login attempts per email and rejects cross-origin writes. Write requests require JSON and the `X-Mess-Request: 1` header. Database queries use bound parameters.
+
+## Current limits
+
+- Payments are handled by the mess manager. The application displays pending charges and does not collect payments or record settlements.
+- Attendance is reported by the student; it does not verify physical presence.
+- Billing uses a flat monthly charge. Skipping meals does not reduce the bill.
+- New databases start with sample menus and a default monthly charge of ₹3,200. Administrators can update these values.
+- Email verification and password reset emails are not implemented. Registration does not verify institute membership.
+- Administrator views show up to 500 accounts, 500 bills and the latest 100 feedback entries.

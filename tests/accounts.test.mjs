@@ -53,7 +53,7 @@ test('reserved administrator email cannot be registered or claimed with the wron
 test('separate login sessions load persistent records; logout revokes only the current session', async t => {
   const f = await fixture(t), first = await f.register('student@example.test');
   const state = await f.request('/api/bootstrap', 'POST', {}, first.cookie);
-  await f.request('/api/profile', 'PATCH', { name: 'Student Test', roll: 'B124123', hostel: 'Hostel A' }, first.cookie);
+  await f.request('/api/profile', 'PATCH', { name: 'Student Test', roll: 'B124123' }, first.cookie);
   await f.request('/api/bookings', 'POST', { date: state.data.today, meal: 1, status: 'booked' }, first.cookie);
   const second = await f.request('/api/auth/login', 'POST', { email: 'STUDENT@example.test', password });
   assert.equal(second.status, 200); assert.notEqual(first.cookie, second.cookie);
@@ -103,7 +103,7 @@ test('duplicate account registration rolls back all SQL inserts', async t => {
 
 test('migrations are repeatable and remote deployment refuses temporary local databases', async t => {
   const f = await fixture(t); await migrate(f.client);
-  assert.equal((await f.db.prepare('SELECT COUNT(*) AS count FROM mess_migrations').first()).count, 3);
+  assert.equal((await f.db.prepare('SELECT COUNT(*) AS count FROM mess_migrations').first()).count, 4);
   const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, VERCEL: '1', ADMIN_EMAIL: config.adminEmail, ADMIN_PASSWORD: config.adminPassword, TURSO_DATABASE_URL: 'file:.data/invalid-production.db' }, encoding: 'utf8' });
   assert.notEqual(result.status, 0); assert.match(result.stderr, /persistent remote database/);
 });

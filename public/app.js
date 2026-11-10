@@ -1,3 +1,4 @@
+import { emailError } from './email-validation.js';
 /* Mess Hub — vanilla JavaScript client. All records are stored by the server. */
 (() => {
   'use strict';
@@ -29,16 +30,14 @@
   const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${iconPaths[name] || iconPaths.info}</svg>`;
   const meals = ['Breakfast', 'Lunch', 'Dinner'];
   const times = ['7:30 – 9:00 AM', '12:30 – 2:00 PM', '7:30 – 9:00 PM'];
-  const mealEmoji = ['🥞', '🍛', '🥘'];
-  const routes = [ ['dashboard', 'Overview', 'grid'], ['menu', 'Weekly menu', 'utensils'], ['bookings', 'My bookings', 'calendar'], ['attendance', 'Attendance', 'check'], ['payments', 'Bills & payments', 'wallet'], ['feedback', 'Feedback', 'message'], ['admin', 'Administration', 'grid'] ];
+  const routes = [ ['dashboard', 'Overview', 'grid'], ['menu', 'Weekly menu', 'utensils'], ['bookings', 'My bookings', 'calendar'], ['attendance', 'Attendance', 'check'], ['bills', 'Pending bills', 'wallet'], ['feedback', 'Feedback', 'message'], ['admin', 'Administration', 'grid'] ];
   let state = null, adminData = null, adminTab = 'summary', adminDate = todayKey;
   let route = 'dashboard', selectedDay = todayKey, bookingTab = 'upcoming', calendarOffset = 0, selectedRating = 0, toastTimer;
-  let busy = false, pendingPaymentMonth = monthKey, authMode = 'login';
+  let busy = false, authMode = 'login';
   const bookingId = (date, meal) => `${date}_${meal}`;
   const bookingStatus = (date, meal) => state.bookings[bookingId(date, meal)] || 'unbooked';
   const isAttended = (date, meal) => Boolean(state.attendance[bookingId(date, meal)]);
   const currentBill = () => state.bills.find(bill => bill.month === monthKey);
-  const isPaid = () => currentBill()?.status === 'simulated_paid';
   const pendingBills = () => state.bills.filter(bill => bill.status === 'pending');
   async function api(path, method = 'GET', data) {
     let response;
@@ -56,9 +55,14 @@
     render();
   }
   async function mutate(path, method, data, message, close = false) {
-    await api(path, method, data);
+    const result = await api(path, method, data);
     if (close) closeModal();
-    await refresh();
+    if (result.booking || result.attendance) {
+      if (result.booking) state.bookings[bookingId(result.booking.date, result.booking.meal)] = result.booking.status;
+      if (result.attendance) state.attendance[bookingId(result.attendance.date, result.attendance.meal)] = result.attendance.checkedAt;
+      if (result.activity) state.activity = [result.activity, ...state.activity].slice(0, 40);
+      render();
+    } else await refresh();
     toast(message);
   }
   function toast(message) {
@@ -75,11 +79,11 @@
   function updateProfile() {
     const initials = state.profile.name.trim().split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
     $('#sidebar-name').textContent = state.profile.name;
-    $('#sidebar-roll').textContent = `${state.profile.roll || 'Add roll number'} · ${state.profile.hostel}`;
+    $('#sidebar-roll').textContent = state.profile.roll || 'Add roll number';
     $('#sidebar-initials').textContent = initials;
     $('#header-profile').textContent = initials;
   }
-  function heading(title, subtitle, eyebrow = 'YOUR CAMPUS, CONNECTED') {
+  function heading(title, subtitle, eyebrow = 'IIIT BHUBANESWAR / MESS') {
     return `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div><div class="date-box">${icon('calendar')}${formatDate(today, { weekday: 'short', year: 'numeric' })}</div></div>`;
   }
   function stat(label, value, note, symbol, suffix = '') {
@@ -91,35 +95,33 @@
     const menu = entry?.description || 'Menu to be announced';
     const statusText = attended ? 'Checked in' : status === 'booked' ? 'Meal booked' : status === 'skipped' ? 'Meal skipped' : 'Not booked';
     const actionText = attended ? 'Served ✓' : past ? 'Closed' : status === 'booked' ? 'Skip meal' : 'Book meal';
-    return `<article class="meal-card"><div class="meal-art"><div class="food-illustration" aria-hidden="true"><span>${mealEmoji[index]}</span></div><span class="meal-tag">${escapeHTML(entry?.diet || 'Menu pending')}</span></div><div class="meal-content"><div class="meal-top"><h3>${meals[index]}</h3><span class="meal-time">${times[index]}</span></div><p>${escapeHTML(menu)}</p><div class="meal-footer"><span class="status ${status !== 'booked' && !attended ? 'skipped' : ''}">${statusText}</span><button class="meal-action" data-action="booking" data-date="${date}" data-meal="${index}" ${past || attended ? 'disabled' : ''} aria-label="${actionText} for ${meals[index]} on ${date}">${actionText}</button></div></div></article>`;
+    return `<article class="meal-card"><div class="meal-art"><span class="meal-number" aria-hidden="true">0${index + 1}</span><span class="meal-tag">${escapeHTML(entry?.diet || 'Menu pending')}</span></div><div class="meal-content"><div class="meal-top"><h3>${meals[index]}</h3><span class="meal-time">${times[index]}</span></div><p>${escapeHTML(menu)}</p><div class="meal-footer"><span class="status ${status !== 'booked' && !attended ? 'skipped' : ''}">${statusText}</span><button class="meal-action" data-action="booking" data-date="${date}" data-meal="${index}" ${past || attended ? 'disabled' : ''} aria-label="${actionText} for ${meals[index]} on ${date}">${actionText}</button></div></div></article>`;
   }
-  const plate = `<div class="plate-art" aria-hidden="true"><svg viewBox="0 0 260 220"><ellipse cx="140" cy="124" rx="84" ry="83" fill="#a7b28b" opacity=".15"/><circle cx="137" cy="111" r="82" fill="#fbfbef"/><circle cx="137" cy="111" r="72" fill="#e1e6d4"/><circle cx="137" cy="111" r="66" fill="#f5f5e6"/><path d="M135 53c-36 3-54 30-47 64 6 15 30 27 50 14 17-9 20-47-3-78" fill="#e1d2a4"/><path d="M103 77q17-15 27 3m-34 9q20-9 35 0m-34 10q19-6 35 0m-28 11q16-7 28 0" stroke="#ede4c5" stroke-width="4" stroke-linecap="round"/><circle cx="163" cy="86" r="24" fill="#a7793d"/><circle cx="163" cy="86" r="20" fill="#bc8d4d"/><circle cx="157" cy="80" r="5" fill="#e2bb74"/><circle cx="171" cy="84" r="5" fill="#dfb166"/><circle cx="160" cy="93" r="5" fill="#ddac60"/><path d="m160 76 5-3m7 18 4 1m-24-3-3-3" stroke="#64814b" stroke-width="3"/><path d="M150 124c10-22 31-12 36-4 9 22-15 38-35 28-5-8-7-16-1-24" fill="#65804a"/><path d="m150 130 28-4m-24 13 23-4" stroke="#8ca161" stroke-width="4"/><ellipse cx="121" cy="150" rx="22" ry="18" fill="#d6a75f"/><path d="m108 145 19 8m-16-13 19 9m-17-15 17 10" stroke="#b38948" stroke-width="1.5"/><circle cx="140" cy="139" r="10" fill="#c66f4c"/><circle cx="140" cy="139" r="7" fill="#e4a17a"/><circle cx="148" cy="155" r="10" fill="#8ca86b"/><circle cx="148" cy="155" r="7" fill="#c6d5a5"/><path d="M35 47v43q0 8 7 8v82M29 48v33m13-33v33m7-33v33M229 46v134m0-134q-15 10-12 49h12" stroke="#8f9b7e" stroke-width="3" fill="none"/><path d="m202 29 7-6m-2 16 9-1M63 183l-6 6m16-1-2 9" stroke="#9aaa83" stroke-width="2"/></svg></div>`;
   function notices() {
     return `<section class="panel notices" aria-label="Announcements"><h2>${icon('megaphone')} Notice board</h2>${state.notices.length ? state.notices.slice(0, 3).map(notice => `<article class="notice"><div class="notice-date">${formatDate(new Date(notice.created_at))} · MESS COMMITTEE</div><h3>${escapeHTML(notice.title)}</h3><p>${escapeHTML(notice.body)}</p></article>`).join('') : '<p class="subtle">No announcements at the moment.</p>'}</section>`;
   }
   function activityRows(all = false) {
     const list = all ? state.activity : state.activity.slice(0, 3);
-    if (!list.length) return `<div class="activity-row"><span class="activity-icon">${icon('leaf')}</span><div class="activity-text"><strong>A fresh start to your mess experience</strong><small>Your bookings, check-ins and feedback will appear here.</small></div></div>`;
+    if (!list.length) return `<div class="activity-row"><span class="activity-icon">${icon('leaf')}</span><div class="activity-text"><strong>No activity yet</strong><small>Your bookings, check-ins and feedback will appear here.</small></div></div>`;
     return list.map(item => `<div class="activity-row"><span class="activity-icon">${icon(item.type)}</span><div class="activity-text"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail)}</small></div><span>${formatDate(new Date(item.timestamp))}</span></div>`).join('');
   }
   function renderDashboard() {
     const booked = meals.filter((_, i) => bookingStatus(todayKey, i) === 'booked').length;
     const attended = Object.keys(state.attendance).filter(key => key.startsWith(monthKey)).length;
     const skipped = Object.entries(state.bookings).filter(([key, status]) => key.startsWith(monthKey) && status === 'skipped').length;
-    return `${heading(`Hello, ${escapeHTML(state.profile.name.trim().split(/\s+/)[0])} <span class="wave" aria-hidden="true">👋</span>`, 'A little less hassle. A little more good food. Here’s your mess at a glance.')}
-      <section class="hero"><div class="hero-content"><div class="eyebrow"><span class="live-dot"></span> GOOD FOOD. GOOD CAMPUS LIFE.</div><h2>Your meals, made simple.</h2><p>Know what’s cooking, plan your meals,<br>and make every plate count.</p><div class="hero-actions"><a href="#menu" class="button primary">Explore this week’s menu ${icon('arrow')}</a><a href="#bookings" class="button ghost">Manage bookings ↗</a></div></div><span class="hero-scribble">a little taste of home ↘</span>${plate}</section>
-      <section class="stats-grid" aria-label="Mess statistics">${stat('Today’s meals', String(booked).padStart(2, '0'), '<span class="good">Ready when you are</span> · of 3 meals', 'utensils')}${stat('Meals attended', String(attended).padStart(2, '0'), 'Your check-ins this month', 'check')}${stat('Mess bill', isPaid() ? 'Settled' : money(currentBill()?.amount || 0), isPaid() ? '<span class="good">Demo payment complete</span>' : 'This month · Server-issued bill', 'wallet')}${stat('Meals skipped', String(skipped).padStart(2, '0'), '<span class="good">A little planning, less waste</span>', 'leaf')}</section>
-      <div class="content-grid"><section><div class="section-heading"><div><h2>On the menu today</h2><p>Freshly prepared. Served with a little care.</p></div><a class="text-link" href="#menu">View weekly menu ${icon('arrow')}</a></div><div class="meal-grid">${meals.map((_, i) => mealCard(todayKey, i)).join('')}</div></section>${notices()}</div>
-      <div class="lower-grid"><section class="panel activity-panel"><div class="section-heading"><h2>Your recent activity</h2><button class="text-link" data-action="activity">View all ${icon('arrow')}</button></div>${activityRows()}</section><section class="eco-card">${icon('leaf')}<div class="eyebrow">SMALL ACTIONS. BIG IMPACT.</div><h3>Take what you need.<br>Love what you eat.</h3><p>Skipping a meal? Let us know. Together, we can make our mess a little more mindful.</p><a href="#bookings">Plan your next meal ↗</a></section></div>`;
+    return `<section class="board-intro"><div><div class="eyebrow">THE DAILY BOARD / ${formatDate(today, { weekday: 'long' })}</div><h1>Three meals.<br>Your call.</h1><p>Welcome, ${escapeHTML(state.profile.name.trim().split(/\s+/)[0])}. Here’s what’s being served today.</p><a href="#menu" class="text-link">See the full week ${icon('arrow')}</a></div><div class="board-date"><span>${formatDate(today, { month: 'long', day: undefined })}</span><strong>${today.getDate()}</strong><span>IIIT BHUBANESWAR · ${today.getFullYear()}</span></div></section>
+      <section class="stats-grid" aria-label="Mess statistics">${stat('Booked today', `${booked} / 3`, 'Breakfast · lunch · dinner', 'utensils')}${stat('Check-ins', attended, 'This month', 'check')}${stat('Pending this month', money(currentBill()?.amount ?? 0), 'Clear with mess manager by month end', 'wallet')}${stat('Meals skipped', skipped, 'This month', 'calendar')}</section>
+      <div class="content-grid"><section><div class="section-heading"><div><div class="eyebrow">01 / THE KITCHEN</div><h2>Today’s menu</h2></div><a class="text-link" href="#bookings">My bookings ${icon('arrow')}</a></div><div class="meal-grid">${meals.map((_, i) => mealCard(todayKey, i)).join('')}</div></section>${notices()}</div>
+      <section class="panel activity-panel section-space"><div class="section-heading"><div><div class="eyebrow">02 / YOUR RECORD</div><h2>Recent activity</h2></div><button class="text-link" data-action="activity">View all ${icon('arrow')}</button></div>${activityRows()}</section>`;
   }
   function renderMenu() {
     const start = new Date(today); start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
     const week = Array.from({ length: 7 }, (_, i) => { const date = new Date(start); date.setDate(start.getDate() + i); return date; });
-    return `${heading('A week of good food.', 'Your shared campus menu. Choose a day, see what’s cooking, and plan ahead.', 'THE WEEKLY MENU')}<div class="view-toolbar"><div class="subtle">${formatDate(week[0])} – ${formatDate(week[6], { year: 'numeric' })}</div><span class="badge">Vegetarian options daily</span></div><div class="week-days" role="group" aria-label="Select menu day">${week.map(date => `<button class="day-button ${dateKey(date) === selectedDay ? 'active' : ''}" aria-pressed="${dateKey(date) === selectedDay}" data-action="day" data-date="${dateKey(date)}">${formatDate(date, { weekday: 'short' }).split(',')[0].split(' ')[0]}<strong>${date.getDate()}</strong></button>`).join('')}</div><div class="section-heading"><div><h2>${selectedDay === todayKey ? 'Today' : formatDate(parseDate(selectedDay), { weekday: 'long' })}’s menu</h2><p>Your bookings are securely saved to your account.</p></div></div><div class="meal-grid menu-detail">${meals.map((_, i) => mealCard(selectedDay, i, true)).join('')}</div><div class="info-strip">${icon('info')}<span>Menus are managed by your administrator. Ask the mess committee about dietary or allergy information. Skipping meals does not change the monthly flat-rate bill.</span></div>`;
+    return `${heading('The weekly menu', 'Choose a day to see the menu and book your meals.', 'THE WEEKLY MENU')}<div class="view-toolbar"><div class="subtle">${formatDate(week[0])} – ${formatDate(week[6], { year: 'numeric' })}</div><span class="badge">Vegetarian options daily</span></div><div class="week-days" role="group" aria-label="Select menu day">${week.map(date => `<button class="day-button ${dateKey(date) === selectedDay ? 'active' : ''}" aria-pressed="${dateKey(date) === selectedDay}" data-action="day" data-date="${dateKey(date)}">${formatDate(date, { weekday: 'short' }).split(',')[0].split(' ')[0]}<strong>${date.getDate()}</strong></button>`).join('')}</div><div class="section-heading"><div><h2>${selectedDay === todayKey ? 'Today' : formatDate(parseDate(selectedDay), { weekday: 'long' })}’s menu</h2><p>Your bookings are securely saved to your account.</p></div></div><div class="meal-grid menu-detail">${meals.map((_, i) => mealCard(selectedDay, i, true)).join('')}</div><div class="info-strip">${icon('info')}<span>Menus are managed by your administrator. Ask the mess committee about dietary or allergy information. Skipping meals does not change the monthly flat-rate bill.</span></div>`;
   }
   function renderBookings() {
     const rows = Object.entries(state.bookings).filter(([key]) => bookingTab === 'upcoming' ? key.slice(0, 10) >= todayKey : key.slice(0, 10) < todayKey).sort(([a], [b]) => bookingTab === 'upcoming' ? a.localeCompare(b) : b.localeCompare(a));
-    return `${heading('A little planning goes a long way.', 'Book what you’ll eat. Skip what you won’t. Keep your meals in one place.', 'MY BOOKINGS')}<div class="view-toolbar"><div class="segmented"><button data-action="booking-tab" data-tab="upcoming" class="${bookingTab === 'upcoming' ? 'active' : ''}" aria-pressed="${bookingTab === 'upcoming'}">Today & upcoming</button><button data-action="booking-tab" data-tab="past" class="${bookingTab === 'past' ? 'active' : ''}" aria-pressed="${bookingTab === 'past'}">Past meals</button></div><a class="button primary" href="#menu">${icon('calendar')} Book a meal</a></div><div class="table-wrap"><table><thead><tr><th>DATE & MEAL</th><th>MEAL TIMING</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>${rows.length ? rows.map(([key, status]) => {
+    return `${heading('Your bookings', 'Check upcoming meals or review your booking history.', 'MY BOOKINGS')}<div class="view-toolbar"><div class="segmented"><button data-action="booking-tab" data-tab="upcoming" class="${bookingTab === 'upcoming' ? 'active' : ''}" aria-pressed="${bookingTab === 'upcoming'}">Today & upcoming</button><button data-action="booking-tab" data-tab="past" class="${bookingTab === 'past' ? 'active' : ''}" aria-pressed="${bookingTab === 'past'}">Past meals</button></div><a class="button primary" href="#menu">${icon('calendar')} Book a meal</a></div><div class="table-wrap"><table><thead><tr><th>DATE & MEAL</th><th>MEAL TIMING</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>${rows.length ? rows.map(([key, status]) => {
       const date = key.slice(0, 10), meal = Number(key.slice(11)), attended = isAttended(date, meal);
       return `<tr><td>${formatDate(parseDate(date), { weekday: 'short' })}<small>${meals[meal]}</small></td><td>${times[meal]}</td><td><span class="badge ${status === 'skipped' ? 'neutral' : ''}">${attended ? 'Checked in' : status === 'booked' ? 'Booked' : 'Skipped'}</span></td><td>${date >= todayKey && !attended ? `<button class="text-link" data-action="booking" data-date="${date}" data-meal="${meal}">${status === 'booked' ? 'Skip meal' : 'Book again'}</button>` : '—'}</td></tr>`;
     }).join('') : '<tr><td colspan="4" class="empty-state">No meals here yet. Choose a meal from the weekly menu to get started.</td></tr>'}</tbody></table></div><div class="info-strip">${icon('leaf')}<span>Book meals from the weekly menu. You can manage today’s and future meals. Served meals and past bookings stay in your history.</span></div>`;
@@ -129,23 +131,22 @@
     const year = month.getFullYear(), monthIndex = month.getMonth(), monthPrefix = dateKey(month).slice(0, 7);
     const count = Object.keys(state.attendance).filter(key => key.startsWith(monthPrefix)).length;
     const offset = (month.getDay() + 6) % 7, days = new Date(year, monthIndex + 1, 0).getDate();
-    return `${heading('Every meal, accounted for.', 'Check in for today’s booked meals and keep track of your attendance.', 'MEAL ATTENDANCE')}<div class="section-heading"><div><h2>Today’s check-in</h2><p>Record the meals you have eaten. One check-in is allowed per booked meal.</p></div></div><div class="meal-grid">${meals.map((meal, i) => `<article class="panel"><div class="section-heading"><h2>${meal}</h2>${icon('utensils')}</div><p class="subtle">${times[i]}</p><button class="button ${isAttended(todayKey, i) ? 'secondary' : 'primary'}" data-action="check-in" data-meal="${i}" ${isAttended(todayKey, i) || bookingStatus(todayKey, i) !== 'booked' ? 'disabled' : ''}>${isAttended(todayKey, i) ? 'Checked in ✓' : bookingStatus(todayKey, i) !== 'booked' ? 'Book meal to check in' : 'Check in'}</button></article>`).join('')}</div><section class="panel section-space"><div class="section-heading"><div><h2>${formatDate(month, { month: 'long', year: 'numeric', day: undefined })}</h2><p>${count} meal${count === 1 ? '' : 's'} attended this month</p></div><div class="inline-actions"><button class="button secondary" data-action="month" data-direction="-1" aria-label="Previous month">←</button><button class="button secondary" data-action="month" data-direction="1" aria-label="Next month" ${calendarOffset >= 0 ? 'disabled' : ''}>→</button></div></div><div class="calendar">${['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(day => `<div class="calendar-heading">${day}</div>`).join('')}${'<div aria-hidden="true"></div>'.repeat(offset)}${Array.from({ length: days }, (_, i) => {
+    return `${heading('Attendance', 'Check in for today’s booked meals and keep track of your attendance.', 'MEAL ATTENDANCE')}<div class="section-heading"><div><h2>Today’s check-in</h2><p>Record the meals you have eaten. One check-in is allowed per booked meal.</p></div></div><div class="meal-grid">${meals.map((meal, i) => `<article class="panel"><div class="section-heading"><h2>${meal}</h2>${icon('utensils')}</div><p class="subtle">${times[i]}</p><button class="button ${isAttended(todayKey, i) ? 'secondary' : 'primary'}" data-action="check-in" data-meal="${i}" ${isAttended(todayKey, i) || bookingStatus(todayKey, i) !== 'booked' ? 'disabled' : ''}>${isAttended(todayKey, i) ? 'Checked in ✓' : bookingStatus(todayKey, i) !== 'booked' ? 'Book meal to check in' : 'Check in'}</button></article>`).join('')}</div><section class="panel section-space"><div class="section-heading"><div><h2>${formatDate(month, { month: 'long', year: 'numeric', day: undefined })}</h2><p>${count} meal${count === 1 ? '' : 's'} attended this month</p></div><div class="inline-actions"><button class="button secondary" data-action="month" data-direction="-1" aria-label="Previous month">←</button><button class="button secondary" data-action="month" data-direction="1" aria-label="Next month" ${calendarOffset >= 0 ? 'disabled' : ''}>→</button></div></div><div class="calendar">${['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(day => `<div class="calendar-heading">${day}</div>`).join('')}${'<div aria-hidden="true"></div>'.repeat(offset)}${Array.from({ length: days }, (_, i) => {
       const date = dateKey(new Date(year, monthIndex, i + 1));
       const attended = meals.filter((_, meal) => isAttended(date, meal)).length;
       return `<div class="calendar-day ${date === todayKey ? 'today' : date > todayKey ? 'future' : ''}" aria-label="${date}: ${attended} meals attended"><b>${i + 1}</b><div class="dots" aria-hidden="true">${meals.map((_, meal) => `<i class="${isAttended(date, meal) ? 'present' : ''}"></i>`).join('')}</div>${date === todayKey ? '<span>TODAY</span>' : ''}</div>`;
     }).join('')}</div><div class="calendar-legend"><span><i></i>Attended</span><span><i></i>No check-in</span><span>Dots: breakfast · lunch · dinner</span></div></section>`;
   }
-  function renderPayments() {
-    const outstanding = pendingBills().reduce((sum, bill) => sum + bill.amount, 0);
-    return `${heading('Good food. Clear accounts.', 'Server-issued monthly bills and your payment history in one place.', 'BILLS & PAYMENTS')}
-      <section class="balance-panel"><div><p>Total outstanding · ${pendingBills().length} pending bill(s)</p><strong>${money(outstanding)}</strong><small>Payments in this project are simulations. No money is collected.</small></div><span class="badge">${pendingBills().length ? 'Action needed' : 'All settled'}</span></section>
-      <div class="section-heading"><div><h2>Your bills</h2><p>Bill amounts are set by your mess administrator.</p></div><button class="text-link" data-action="export">${icon('download')} Export payments</button></div>
-      <div class="table-wrap"><table><thead><tr><th>BILLING MONTH</th><th>AMOUNT</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>${state.bills.length ? state.bills.map(bill => `<tr><td>${formatDate(parseDate(`${bill.month}-01`), { month: 'long', year: 'numeric', day: undefined })}${bill.timestamp ? `<small>Recorded ${formatDate(new Date(bill.timestamp))}</small>` : ''}</td><td>${money(bill.amount)}</td><td><span class="badge ${bill.status === 'pending' ? 'warning' : ''}">${bill.status === 'pending' ? 'Pending' : 'Simulation recorded'}</span></td><td>${bill.status === 'pending' ? `<button class="text-link" data-action="pay" data-month="${bill.month}">Simulate payment ${icon('arrow')}</button>` : `<button class="text-link" data-action="receipt" data-id="${escapeHTML(bill.receipt)}">Download receipt ${icon('download')}</button>`}</td></tr>`).join('') : '<tr><td colspan="4" class="empty-state">No bills have been issued.</td></tr>'}</tbody></table></div>
-      <div class="info-strip">${icon('info')}<span>Payment simulation records are stored in the database and visible to the administrator. They do not confirm a bank transaction. A real payment gateway is required to collect money.</span></div>`;
+  function renderBills() {
+    const outstanding = pendingBills().reduce((total, bill) => total + bill.amount, 0);
+    return `${heading('Pending bills', 'Monthly mess charges issued by your administrator.', 'ACCOUNTS / MONTHLY DUES')}
+      <section class="balance-panel"><div><p>Total pending · ${pendingBills().length} bill(s)</p><strong>${money(outstanding)}</strong><small>Clear your pending bill with the mess manager by the end of the month.</small></div><span class="badge warning">${pendingBills().length ? 'Pending' : 'No pending bills'}</span></section>
+      <div class="section-heading"><h2>Monthly charges</h2></div><div class="table-wrap"><table><thead><tr><th>MONTH</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>${pendingBills().map(bill => `<tr><td>${formatDate(parseDate(`${bill.month}-01`), { month: 'long', year: 'numeric', day: undefined })}</td><td>${money(bill.amount)}</td><td><span class="badge warning">Pending</span></td></tr>`).join('') || emptyRow(3, 'No pending bills have been issued.')}</tbody></table></div>
+      <div class="info-strip">${icon('info')}<span>Payments are handled by the mess manager. Contact them for payment instructions or questions about your bill. Skipping meals does not change the monthly charge.</span></div>`;
   }
   function renderFeedback() {
     selectedRating = 0;
-    return `${heading('A better mess starts with you.', 'Tell us what’s working, what could be better, or what you’d love on your plate.', 'YOUR VOICE MATTERS')}<div class="form-grid"><section class="panel"><div class="section-heading"><div><h2>Share your experience</h2><p>Small suggestions can make a big difference.</p></div></div><form id="feedback-form"><div class="form-field"><span class="field-label" id="rating-label">How was your experience?</span><div class="rating" role="group" aria-labelledby="rating-label">${[1, 2, 3, 4, 5].map(rating => `<button type="button" data-action="rate" data-rating="${rating}" aria-label="${rating} star${rating === 1 ? '' : 's'}" aria-pressed="false">★</button>`).join('')}</div><small id="rating-description">Choose a rating from 1 to 5.</small></div><div class="form-field"><label for="category">What’s it about?</label><select id="category" name="category"><option>Food quality</option><option>Menu suggestion</option><option>Hygiene & cleanliness</option><option>Service & timing</option><option>Other</option></select></div><div class="form-field"><label for="feedback-message">Your feedback</label><textarea id="feedback-message" name="message" placeholder="A dish you loved? Something we can improve? Tell us here…" required minlength="10" maxlength="1500"></textarea><small>At least 10 characters. Your feedback will be visible to the administrator.</small></div><button type="submit" class="button primary">Share feedback ${icon('arrow')}</button></form></section><section class="panel"><div class="section-heading"><div><h2>Your feedback</h2><p>${state.feedback.length} suggestion${state.feedback.length === 1 ? '' : 's'} shared in this workspace</p></div></div><div class="feedback-list">${state.feedback.length ? state.feedback.map(item => `<article class="feedback-item"><div class="feedback-stars" aria-label="${item.rating} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</div><h3>${escapeHTML(item.category)}</h3><p>${escapeHTML(item.message)}</p><small>${formatDate(new Date(item.timestamp), { year: 'numeric' })} · ${escapeHTML(item.status === 'reviewed' ? 'Reviewed by admin' : 'Awaiting review')}</small></article>`).join('') : `<div class="empty-state">${icon('message')}Your voice belongs here.<br><br>Share your first suggestion using the form.</div>`}</div></section></div>`;
+    return `${heading('Feedback', 'Tell us what’s working, what could be better, or what you’d love on your plate.', 'FEEDBACK / THE MESS COMMITTEE')}<div class="form-grid"><section class="panel"><div class="section-heading"><div><h2>Share your experience</h2><p>Small suggestions can make a big difference.</p></div></div><form id="feedback-form"><div class="form-field"><span class="field-label" id="rating-label">How was your experience?</span><div class="rating" role="group" aria-labelledby="rating-label">${[1, 2, 3, 4, 5].map(rating => `<button type="button" data-action="rate" data-rating="${rating}" aria-label="${rating} star${rating === 1 ? '' : 's'}" aria-pressed="false">★</button>`).join('')}</div><small id="rating-description">Choose a rating from 1 to 5.</small></div><div class="form-field"><label for="category">What’s it about?</label><select id="category" name="category"><option>Food quality</option><option>Menu suggestion</option><option>Hygiene & cleanliness</option><option>Service & timing</option><option>Other</option></select></div><div class="form-field"><label for="feedback-message">Your feedback</label><textarea id="feedback-message" name="message" placeholder="A dish you loved? Something we can improve? Tell us here…" required minlength="10" maxlength="1500"></textarea><small>At least 10 characters. Your feedback will be visible to the administrator.</small></div><button type="submit" class="button primary">Share feedback ${icon('arrow')}</button></form></section><section class="panel"><div class="section-heading"><div><h2>Your feedback</h2><p>${state.feedback.length} suggestion${state.feedback.length === 1 ? '' : 's'} shared in this workspace</p></div></div><div class="feedback-list">${state.feedback.length ? state.feedback.map(item => `<article class="feedback-item"><div class="feedback-stars" aria-label="${item.rating} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</div><h3>${escapeHTML(item.category)}</h3><p>${escapeHTML(item.message)}</p><small>${formatDate(new Date(item.timestamp), { year: 'numeric' })} · ${escapeHTML(item.status === 'reviewed' ? 'Reviewed by admin' : 'Awaiting review')}</small></article>`).join('') : `<div class="empty-state">${icon('message')}No feedback yet. Submit a suggestion using the form.</div>`}</div></section></div>`;
   }
   let adminMenuDay = (today.getDay() + 6) % 7;
   const weekNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -168,31 +169,31 @@
       }).join('')}</div>`;
     }
     if (adminTab === 'students') {
-      content = `<div class="info-strip">${icon('info')}<span>Students create an account through student registration. Only administrators can change roles or deactivate accounts.</span></div><div class="table-wrap section-space"><table><thead><tr><th>STUDENT</th><th>ROLL NUMBER</th><th>HOSTEL</th><th>ROLE / STATUS</th><th>ACTION</th></tr></thead><tbody>${data.students.map(student => `<tr><td>${escapeHTML(student.name)}<small>${escapeHTML(student.email)}</small></td><td>${escapeHTML(student.roll || 'Not set')}</td><td>${escapeHTML(student.hostel)}</td><td><span class="badge ${student.active ? '' : 'neutral'}">${escapeHTML(student.role)} · ${student.active ? 'active' : 'inactive'}</span></td><td>${student.email === state.profile.email ? 'Your account' : `<button class="text-link" data-action="edit-student" data-id="${escapeHTML(student.id)}">Manage access</button>`}</td></tr>`).join('') || emptyRow(5, 'No student accounts yet.')}</tbody></table></div><p class="subtle">Showing up to 500 accounts, newest first.</p>`;
+      content = `<div class="info-strip">${icon('info')}<span>Students create an account through student registration. Only administrators can change roles or deactivate accounts.</span></div><div class="table-wrap section-space"><table><thead><tr><th>STUDENT</th><th>ROLL NUMBER</th><th>ROLE / STATUS</th><th>ACTION</th></tr></thead><tbody>${data.students.map(student => `<tr><td>${escapeHTML(student.name)}<small>${escapeHTML(student.email)}</small></td><td>${escapeHTML(student.roll || 'Not set')}</td><td><span class="badge ${student.active ? '' : 'neutral'}">${escapeHTML(student.role)} · ${student.active ? 'active' : 'inactive'}</span></td><td>${student.email === state.profile.email ? 'Your account' : `<button class="text-link" data-action="edit-student" data-id="${escapeHTML(student.id)}">Manage access</button>`}</td></tr>`).join('') || emptyRow(4, 'No student accounts yet.')}</tbody></table></div><p class="subtle">Showing up to 500 accounts, newest first.</p>`;
     }
     if (adminTab === 'feedback') {
       content = `<div class="admin-feedback-grid">${data.feedback.map(item => `<article class="panel"><div class="section-heading"><div><h2>${escapeHTML(item.category)}</h2><p>${escapeHTML(item.name)} · ${escapeHTML(item.roll || 'No roll number')}</p></div><span class="badge ${item.status === 'open' ? 'warning' : ''}">${item.status}</span></div><div class="feedback-stars" aria-label="${item.rating} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</div><p class="feedback-message">${escapeHTML(item.message)}</p><div class="section-heading"><span class="subtle">${formatDate(new Date(item.created_at))}</span><button class="text-link" data-action="review-feedback" data-id="${escapeHTML(item.id)}" data-status="${item.status === 'open' ? 'reviewed' : 'open'}">${item.status === 'open' ? 'Mark reviewed ✓' : 'Reopen'}</button></div></article>`).join('') || '<div class="empty-state">No feedback has been submitted.</div>'}</div><p class="subtle">Showing the latest 100 entries.</p>`;
     }
     if (adminTab === 'bills') {
-      content = `<section class="panel"><div class="section-heading"><div><h2>Issue monthly bills</h2><p>Issue or correct pending bills for active accounts. Settled simulations retain their receipt and original amount.</p></div></div><form id="admin-bill-form" class="admin-bill-form"><div class="form-field"><label for="bill-month">Billing month</label><input type="month" name="month" id="bill-month" max="${monthKey}" value="${monthKey}" required></div><div class="form-field"><label for="bill-amount">Monthly charge (₹)</label><input type="number" name="amount" id="bill-amount" min="0" max="100000" step="1" value="${currentBill()?.amount || 3200}" required></div><button type="submit" class="button primary">Issue / update bills</button></form></section><div class="table-wrap section-space"><table><thead><tr><th>STUDENT</th><th>MONTH</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>${data.bills.map(bill => `<tr><td>${escapeHTML(bill.name)}<small>${escapeHTML(bill.roll || 'No roll number')}</small></td><td>${bill.month}</td><td>${money(bill.amount)}</td><td><span class="badge ${bill.status === 'pending' ? 'warning' : ''}">${bill.status === 'pending' ? 'Pending' : 'Simulation recorded'}</span></td></tr>`).join('') || emptyRow(4, 'No bills have been issued.')}</tbody></table></div><p class="subtle">Showing up to 500 bills. Simulation records do not confirm a bank transaction.</p>`;
+      content = `<section class="panel"><div class="section-heading"><div><h2>Issue monthly bills</h2><p>Issue or correct monthly charges for active accounts. Students clear their dues with the mess manager.</p></div></div><form id="admin-bill-form" class="admin-bill-form"><div class="form-field"><label for="bill-month">Billing month</label><input type="month" name="month" id="bill-month" max="${monthKey}" value="${monthKey}" required></div><div class="form-field"><label for="bill-amount">Monthly charge (₹)</label><input type="number" name="amount" id="bill-amount" min="0" max="100000" step="1" value="${currentBill()?.amount || 3200}" required></div><button type="submit" class="button primary">Issue / update bills</button></form></section><div class="table-wrap section-space"><table><thead><tr><th>STUDENT</th><th>MONTH</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>${data.bills.map(bill => `<tr><td>${escapeHTML(bill.name)}<small>${escapeHTML(bill.roll || 'No roll number')}</small></td><td>${bill.month}</td><td>${money(bill.amount)}</td><td><span class="badge ${bill.status === 'pending' ? 'warning' : ''}">Pending</span></td></tr>`).join('') || emptyRow(4, 'No bills have been issued.')}</tbody></table></div><p class="subtle">Showing up to 500 bills. Payments are handled by the mess manager.</p>`;
     }
     if (adminTab === 'notices') {
       content = `<div class="form-grid"><section class="panel"><h2 class="form-title">Post an announcement</h2><form id="notice-form"><div class="form-field"><label for="notice-title">Title</label><input name="title" id="notice-title" required minlength="3" maxlength="100"></div><div class="form-field"><label for="notice-message">Announcement</label><textarea name="body" id="notice-message" required minlength="10" maxlength="1000"></textarea></div><button class="button primary" type="submit">Publish announcement</button></form></section><section class="panel"><h2 class="form-title">Current announcements</h2>${state.notices.map(notice => `<article class="feedback-item"><h3>${escapeHTML(notice.title)}</h3><p>${escapeHTML(notice.body)}</p><div class="section-heading"><span class="subtle">${formatDate(new Date(notice.created_at))}</span><button class="text-link" data-action="delete-notice" data-id="${escapeHTML(notice.id)}">Remove</button></div></article>`).join('') || '<p class="subtle">No announcements.</p>'}</section></div>`;
     }
-    return `${heading('Keep the campus well fed.', 'Manage menus, students, bookings, bills and feedback from one workspace.', 'MESS ADMINISTRATION')}<div class="admin-tabs" role="group" aria-label="Administration sections">${[['summary', 'Overview'], ['menu', 'Menu editor'], ['students', 'Students'], ['feedback', 'Feedback'], ['bills', 'Billing'], ['notices', 'Notices']].map(([key, name]) => `<button class="button ${adminTab === key ? 'primary' : 'secondary'}" data-action="admin-tab" data-tab="${key}" aria-pressed="${adminTab === key}">${name}</button>`).join('')}</div>${content}`;
+    return `${heading('Mess administration', 'Manage menus, students, bookings, bills and feedback from one workspace.', 'MESS ADMINISTRATION')}<div class="admin-tabs" role="group" aria-label="Administration sections">${[['summary', 'Overview'], ['menu', 'Menu editor'], ['students', 'Students'], ['feedback', 'Feedback'], ['bills', 'Billing'], ['notices', 'Notices']].map(([key, name]) => `<button class="button ${adminTab === key ? 'primary' : 'secondary'}" data-action="admin-tab" data-tab="${key}" aria-pressed="${adminTab === key}">${name}</button>`).join('')}</div>${content}`;
   }
   function render() {
     if (!state) return;
     if (route === 'admin' && state.profile.role !== 'admin') route = 'dashboard';
-    $('#main').innerHTML = ({ dashboard: renderDashboard, menu: renderMenu, bookings: renderBookings, attendance: renderAttendance, payments: renderPayments, feedback: renderFeedback, admin: renderAdmin }[route] || renderDashboard)();
+    $('#main').innerHTML = ({ dashboard: renderDashboard, menu: renderMenu, bookings: renderBookings, attendance: renderAttendance, bills: renderBills, feedback: renderFeedback, admin: renderAdmin }[route] || renderDashboard)();
     $('#breadcrumb').textContent = routes.find(item => item[0] === route)?.[1] || 'Overview';
-    $('#navigation').innerHTML = routes.filter(item => item[0] !== 'admin' || state.profile.role === 'admin').map(([path, label, symbol]) => `<a class="nav-link ${route === path ? 'active' : ''}" href="#${path}" ${route === path ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span>${path === 'payments' && pendingBills().length ? `<span class="nav-count">${pendingBills().length}</span>` : ''}</a>`).join('');
+    $('#navigation').innerHTML = routes.filter(item => item[0] !== 'admin' || state.profile.role === 'admin').map(([path, label, symbol]) => `<a class="nav-link ${route === path ? 'active' : ''}" href="#${path}" ${route === path ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span>${path === 'bills' && pendingBills().length ? `<span class="nav-count">${pendingBills().length}</span>` : ''}</a>`).join('');
     document.title = `${routes.find(item => item[0] === route)?.[1]} · IIIT Mess Hub`;
     $('.workspace-label').textContent = state.profile.role === 'admin' ? 'ADMIN & STUDENT WORKSPACE' : 'STUDENT WORKSPACE';
     updateProfile();
   }
   async function navigate() {
-    const next = location.hash.slice(1);
+    const next = location.hash.slice(1) === 'payments' ? 'bills' : location.hash.slice(1);
     route = routes.some(item => item[0] === next) ? next : 'dashboard';
     closeNavigation();
     if (!state) return;
@@ -205,18 +206,7 @@
   function closeNavigation() { $('#sidebar').classList.remove('open'); $('#sidebar-backdrop').classList.remove('visible'); $('#menu-toggle').setAttribute('aria-expanded', 'false'); }
   function editProfile() {
     if (!state) return;
-    openModal('Make yourself at home.', `<p class="modal-copy">Your profile is linked to your signed-in account. Add your roll number to book meals.</p><form id="profile-form"><div class="form-field"><label for="student-name">Full name</label><input id="student-name" name="name" value="${escapeHTML(state.profile.name)}" required minlength="2" maxlength="60"></div><div class="form-field"><label for="student-roll">Roll number</label><input id="student-roll" name="roll" value="${escapeHTML(state.profile.roll)}" required minlength="3" maxlength="20" pattern="[A-Za-z0-9-]+"></div><div class="form-field"><label for="student-hostel">Hostel</label><select name="hostel" id="student-hostel">${['Hostel A', 'Hostel B', 'Hostel C', 'Hostel D', 'Day scholar'].map(hostel => `<option ${state.profile.hostel === hostel ? 'selected' : ''}>${hostel}</option>`).join('')}</select></div><div class="modal-actions"><button type="button" class="button secondary" data-action="close">Cancel</button><button type="submit" class="button primary">Save profile</button></div></form>`);
-  }
-  function download(content, filename, type = 'text/plain') {
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-  function pay(month) {
-    const bill = state.bills.find(item => item.month === month);
-    if (!bill || bill.status !== 'pending') return;
-    pendingPaymentMonth = month;
-    openModal('Record a payment simulation.', `<p class="modal-copy">This action records a simulation in the database. No money will be charged.</p><div class="summary-line"><span>Billing month</span><span>${month}</span></div><div class="summary-line total"><span>Simulation amount</span><span>${money(bill.amount)}</span></div><div class="modal-actions"><button class="button secondary" data-action="close">Cancel</button><button class="button primary" data-action="confirm-payment">Confirm simulation</button></div>`);
+    openModal('Your profile', `<p class="modal-copy">Your profile is linked to your signed-in account. Add your roll number to book meals.</p><form id="profile-form"><div class="form-field"><label for="student-name">Full name</label><input id="student-name" name="name" value="${escapeHTML(state.profile.name)}" required minlength="2" maxlength="60"></div><div class="form-field"><label for="student-roll">Roll number</label><input id="student-roll" name="roll" value="${escapeHTML(state.profile.roll)}" required minlength="3" maxlength="20" pattern="[A-Za-z0-9-]+"></div><div class="modal-actions"><button type="button" class="button secondary" data-action="close">Cancel</button><button type="submit" class="button primary">Save profile</button></div></form>`);
   }
   function editStudent(id) {
     const student = adminData?.students.find(item => item.id === id);
@@ -233,6 +223,7 @@
     if (!state || busy) return;
     try {
       busy = true; button.disabled = true;
+      if (action === 'booking' || action === 'check-in') { button.dataset.originalLabel = button.textContent; button.textContent = 'Saving…'; button.setAttribute('aria-busy', 'true'); }
       if (action === 'logout') { await api('/api/auth/logout', 'POST', {}); closeModal(); showAuth(); toast('You are signed out.'); }
       if (action === 'refresh') { await refresh(); toast('Your workspace is up to date.'); }
       if (action === 'booking') {
@@ -245,19 +236,6 @@
       if (action === 'activity') openModal('Your recent activity', activityRows(true));
       if (action === 'check-in') await mutate('/api/attendance', 'POST', { date: todayKey, meal: Number(meal) }, `${meals[Number(meal)]} checked in. Enjoy your meal!`);
       if (action === 'month') { calendarOffset = Math.min(0, calendarOffset + Number(button.dataset.direction)); render(); }
-      if (action === 'pay') { if (!state.profile.roll) return editProfile(); pay(button.dataset.month); }
-      if (action === 'confirm-payment') await mutate('/api/payments/simulate', 'POST', { month: pendingPaymentMonth }, 'Simulation saved. Your receipt is ready.', true);
-      if (action === 'export') {
-        if (!state.payments.length) return toast('No recorded payment simulations to export yet.');
-        const csv = ['Receipt,Month,Amount INR,Recorded date,Status', ...state.payments.map(payment => [payment.id, payment.month, payment.amount, payment.timestamp, 'Simulated payment'].join(','))].join('\r\n');
-        download(csv, 'mess-hub-payments.csv', 'text/csv;charset=utf-8'); toast('Payment history exported.');
-      }
-      if (action === 'receipt') {
-        const payment = state.payments.find(item => item.id === button.dataset.id);
-        if (!payment) return;
-        download(['IIIT BHUBANESWAR · MESS HUB', 'SIMULATED PAYMENT — NO MONEY COLLECTED', '', `Receipt: ${payment.id}`, `Student: ${state.profile.name}`, `Roll number: ${state.profile.roll}`, `Billing month: ${payment.month}`, `Amount: INR ${payment.amount}`, `Recorded: ${new Date(payment.timestamp).toLocaleString('en-IN')}`, '', 'This database record confirms a simulation, not a bank transaction.'].join('\n'), `${payment.id}.txt`);
-        toast('Simulation receipt downloaded.');
-      }
       if (action === 'rate') {
         selectedRating = Number(button.dataset.rating);
         document.querySelectorAll('[data-action="rate"]').forEach(star => { star.classList.toggle('selected', Number(star.dataset.rating) <= selectedRating); star.setAttribute('aria-pressed', String(Number(star.dataset.rating) === selectedRating)); });
@@ -271,7 +249,7 @@
     } catch (error) {
       toast(error.message);
       if (error.status === 401) showError(error);
-    } finally { busy = false; if (button.isConnected) button.disabled = false; }
+    } finally { busy = false; if (button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); if (button.dataset.originalLabel) button.textContent = button.dataset.originalLabel; } }
   });
   document.addEventListener('submit', async event => {
     const form = event.target;
@@ -281,9 +259,11 @@
       try {
         busy = true; submit.disabled = true;
         const values = Object.fromEntries(new FormData(form));
+        if (!validateEmail() || !form.reportValidity()) return;
+        $('#auth-error').textContent = '';
         await api(authMode === 'register' ? '/api/auth/register' : '/api/auth/login', 'POST', values);
         await boot();
-      } catch (error) { toast(error.message); }
+      } catch (error) { $('#auth-error').textContent = error.message; }
       finally { busy = false; if (submit.isConnected) submit.disabled = false; }
       return;
     }
@@ -299,7 +279,7 @@
       if (form.id === 'profile-form') await mutate('/api/profile', 'PATCH', values, 'Your profile is updated.', true);
       if (form.classList.contains('admin-menu-form')) await mutate('/api/admin/menu', 'PATCH', { ...values, weekday: adminMenuDay, meal: Number(form.dataset.meal) }, 'Menu updated for everyone.');
       if (form.id === 'notice-form') await mutate('/api/admin/notices', 'POST', values, 'Announcement published.');
-      if (form.id === 'admin-bill-form') await mutate('/api/admin/bills', 'POST', { month: values.month, amount: Number(values.amount) }, 'Monthly bills issued. Settled records were preserved.');
+      if (form.id === 'admin-bill-form') await mutate('/api/admin/bills', 'POST', { month: values.month, amount: Number(values.amount) }, 'Monthly bills updated.');
       if (form.id === 'student-access-form') await mutate('/api/admin/students', 'PATCH', { id: form.dataset.id, role: values.role, active: values.active === '1' }, 'Student access updated.', true);
     } catch (error) { toast(error.message); }
     finally { busy = false; if (submit?.isConnected) submit.disabled = false; }
@@ -312,9 +292,33 @@
       catch (error) { toast(error.message); }
     }
   });
+  function validateEmail() {
+    const input = $('#auth-email');
+    if (!input) return true;
+    const error = emailError(input.value);
+    input.setCustomValidity(error);
+    input.setAttribute('aria-invalid', String(Boolean(error)));
+    $('#email-error').textContent = error;
+    if (error) input.focus();
+    return !error;
+  }
+  document.addEventListener('focusout', event => {
+    if (event.target.id === 'auth-email') {
+      const input = event.target, error = emailError(input.value);
+      input.setCustomValidity(error); input.setAttribute('aria-invalid', String(Boolean(error))); $('#email-error').textContent = error;
+    }
+  });
+  document.addEventListener('input', event => {
+    if (event.target.id === 'auth-email') {
+      event.target.setCustomValidity('');
+      event.target.removeAttribute('aria-invalid');
+      $('#email-error').textContent = '';
+    }
+    if (event.target.closest('#auth-form')) $('#auth-error').textContent = '';
+  });
   function showAuth(mode = 'login') {
     authMode = mode; state = null; adminData = null; document.body.classList.add('signed-out');
-    $('#main').innerHTML = `<section class="auth-card"><div class="eyebrow">IIIT BHUBANESWAR · MESS HUB</div><h1>${mode === 'register' ? 'A place at the table.' : 'Your campus. Your meals.'}</h1><p>${mode === 'register' ? 'Create your student account to manage your meals.' : 'Sign in to your student or administrator account.'}</p><div class="segmented auth-tabs"><button type="button" data-action="auth-tab" data-mode="login" class="${mode === 'login' ? 'active' : ''}">Sign in</button><button type="button" data-action="auth-tab" data-mode="register" class="${mode === 'register' ? 'active' : ''}">Student registration</button></div><form id="auth-form">${mode === 'register' ? '<div class="form-field"><label for="auth-name">Full name</label><input id="auth-name" name="name" autocomplete="name" required minlength="2" maxlength="60"></div>' : ''}<div class="form-field"><label for="auth-email">Email</label><input type="email" id="auth-email" name="email" autocomplete="username" required maxlength="254"></div><div class="form-field"><label for="auth-password">Password</label><input type="password" id="auth-password" name="password" autocomplete="${mode === 'register' ? 'new-password' : 'current-password'}" required minlength="12" maxlength="128"><small>Use at least 12 characters.</small></div><button type="submit" class="button primary">${mode === 'register' ? 'Create student account' : 'Sign in'} ${icon('arrow')}</button></form><p class="subtle">${mode === 'register' ? 'Administrator accounts are managed by the mess administrator.' : 'New here? Choose Student registration to get started.'}</p></section>`;
+    $('#main').innerHTML = `<section class="auth-card"><div class="eyebrow">IIIT BHUBANESWAR · MESS HUB</div><h1>${mode === 'register' ? 'Join the mess board.' : 'Back for another meal?'}</h1><p>${mode === 'register' ? 'Create your student account to manage your meals.' : 'Sign in to your student or administrator account.'}</p><div class="segmented auth-tabs"><button type="button" data-action="auth-tab" data-mode="login" class="${mode === 'login' ? 'active' : ''}">Sign in</button><button type="button" data-action="auth-tab" data-mode="register" class="${mode === 'register' ? 'active' : ''}">Student registration</button></div><form id="auth-form" novalidate>${mode === 'register' ? '<div class="form-field"><label for="auth-name">Full name</label><input id="auth-name" name="name" autocomplete="name" required minlength="2" maxlength="60"></div>' : ''}<div class="form-field"><label for="auth-email">Email</label><input type="email" id="auth-email" name="email" autocomplete="username" required maxlength="254" aria-describedby="email-error"><small id="email-error" class="field-error" aria-live="polite"></small></div><div class="form-field"><label for="auth-password">Password</label><input type="password" id="auth-password" name="password" autocomplete="${mode === 'register' ? 'new-password' : 'current-password'}" required minlength="12" maxlength="128"><small>Use at least 12 characters.</small></div><p id="auth-error" class="field-error" role="alert"></p><button type="submit" class="button primary">${mode === 'register' ? 'Create student account' : 'Sign in'} ${icon('arrow')}</button></form><p class="subtle">${mode === 'register' ? 'Administrator accounts are managed by the mess administrator.' : 'New here? Choose Student registration to get started.'}</p></section>`;
   }
   function showError(error) {
     if (error.status === 401) return showAuth();
