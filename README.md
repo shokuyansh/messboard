@@ -1,6 +1,6 @@
 # IIIT Bhubaneswar Mess Management
 
-A web application for managing campus mess meals, attendance and monthly bills. Students can plan their meals and track their records, while administrators manage menus, accounts, billing and feedback from a shared dashboard.
+A web application for managing campus mess meals, attendance and monthly bills. Students can plan their meals and track their records, while administrators manage menus, accounts and attendance-based billing from a shared dashboard.
 
 The campus meal-board interface uses horizontal navigation, numbered meal rows and a warm paper, ink and orange palette. The frontend uses HTML, CSS and vanilla JavaScript. A Node.js API handles authentication and mess operations, with records stored in a Turso/libSQL database. The project is configured for deployment on Vercel.
 
@@ -16,16 +16,13 @@ This is an independent student project and is not an official institute service.
 - Book or skip individual meals from today up to 30 days ahead.
 - Check in for today's booked meals and view attendance history.
 - View pending monthly bills and a reminder to clear dues with the mess manager by the end of the month.
-- Submit rated feedback and read mess announcements.
 
 ### Administrators
 
 - Review bookings and attendance for a selected date.
 - Edit the shared weekly menu.
 - View student profiles, change account roles and activate or deactivate accounts.
-- Issue monthly bills and correct pending charges.
-- Review feedback and update its status.
-- Publish and remove announcements.
+- Review monthly meal charges calculated from each student’s check-ins.
 
 ## How it works
 
@@ -34,6 +31,20 @@ The browser sends requests to `/api/*`. The API identifies the signed-in account
 Locally, the application uses a SQLite file under `.data/`. On Vercel, it connects to a hosted Turso/libSQL database so records persist across deployments. SQL migrations in `drizzle/` create and update the tables.
 
 Meal dates follow **Asia/Kolkata**. Each student can have one booking and one attendance entry per meal per day. A meal cannot be changed after check-in.
+
+## Meal pricing and billing
+
+| Meal | Price per check-in |
+| --- | --- |
+| Breakfast | ₹30 |
+| Lunch | ₹45 |
+| Dinner | ₹40 |
+
+New accounts start with no amount due. Monthly charges come from attendance records: breakfast check-ins × ₹30 + lunch check-ins × ₹45 + dinner check-ins × ₹40. Booking or skipping a meal does not create a charge. Duplicate check-ins are rejected.
+
+The rates appear in Overview and Billing. Students see their monthly meal counts and totals; administrators can view totals for all students. Dues are cleared with the mess manager by the end of the month. The app does not record payment settlements.
+
+Old flat bills, including the default ₹3,200 charge, are excluded from current totals. Their database records are retained for reference. Feedback and notification features are no longer available.
 
 ## Run locally
 
@@ -155,7 +166,7 @@ Email syntax is checked in the browser and API, with inline errors on sign-in an
 
 - Payments are handled by the mess manager. The application displays pending charges and does not collect payments or record settlements.
 - Attendance is reported by the student; it does not verify physical presence.
-- Billing uses a flat monthly charge. Skipping meals does not reduce the bill.
-- New databases start with sample menus and a default monthly charge of ₹3,200. Administrators can update these values.
+- Charges are calculated from self-reported attendance. A check-in adds the fixed price for that meal to its calendar month.
+- New databases start with sample menus. There is no default monthly bill.
 - Email verification and password reset emails are not implemented. Registration does not verify institute membership.
-- Administrator views show up to 500 accounts, 500 bills and the latest 100 feedback entries.
+- Administrator views show up to 500 accounts, 500 monthly meal totals.

@@ -38,7 +38,8 @@ test('only configured owner becomes admin; client role and student IDs are ignor
   assert.equal((await f.bootstrap(admin)).data.profile.role, 'admin');
   assert.equal((await f.request(alice, 'admin/overview')).status, 403);
   assert.equal(first.data.menus.length, 21);
-  assert.equal(first.data.bills[0].amount, 3200);
+  assert.deepEqual(first.data.bills, []);
+  assert.deepEqual(first.data.mealRates, [30,45,40]);
   assert.deepEqual(first.data.bookings, {});
 });
 
@@ -82,44 +83,67 @@ test('students see pending bills and cannot settle them through the removed paym
   const f = fixture(t); await f.bootstrap(alice); await f.profile(alice, 'B124001');
   assert.equal((await f.request(alice, 'payments/simulate', 'POST', { month: '2026-11' })).status, 404);
   const state = (await f.request(alice, 'state')).data;
-  assert.deepEqual(state.bills, [{ month: '2026-11', amount: 3200, status: 'pending' }]);
+  assert.deepEqual(state.bills, []);
   assert.equal('payments' in state, false);
   assert.equal('hostel' in state.profile, false);
 });
 
-test('admin billing updates monthly charges and applies to new students', async t => {
-  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice);
-  assert.equal((await f.request(admin, 'admin/bills', 'POST', { month: '2026-11', amount: 3500 })).status, 200);
-  assert.equal((await f.request(admin, 'state')).data.bills[0].amount, 3500);
-  assert.equal((await f.request(alice, 'state')).data.bills[0].amount, 3500);
-  assert.equal((await f.bootstrap(bob)).data.bills[0].amount, 3500);
-  assert.equal((await f.request(alice, 'admin/bills', 'POST', { month: '2026-11', amount: 0 })).status, 403);
+test('dues use attended meals at fixed prices, isolate accounts, and ignore legacy flat bills', async t => {
+  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice); await f.bootstrap(bob);
+  await f.profile(alice, 'B124001');
+  f.db.sqlite.prepare("INSERT INTO bills VALUES (?, ?, ?, ?)").run(alice.userId, '2026-11', 3200, 'pending');
+  assert.deepEqual((await f.request(alice, 'state')).data.bills, []);
+  for (const meal of [0,1,2]) {
+    await f.request(alice, 'bookings', 'POST', { date: today, meal, status: 'booked' });
+  }
+  assert.deepEqual((await f.request(alice, 'state')).data.bills, []);
+  for (const [meal, amount] of [[0,30],[1,45],[2,40]]) {
+    const attended = await f.request(alice, 'attendance', 'POST', { date: today, meal, amount: 1 });
+    assert.equal(attended.status, 200);
+    assert.deepEqual(attended.data.charge, { month: '2026-11', meal, amount });
+  }
+  assert.equal((await f.request(alice, 'attendance', 'POST', { date: today, meal: 0 })).status, 409);
+  const state = (await f.request(alice, 'state')).data;
+  assert.deepEqual(state.bills, [{ month: '2026-11', amount: 115, status: 'pending', mealCounts: [1,1,1] }]);
+  assert.deepEqual((await f.request(bob, 'state')).data.bills, []);
+  const report = (await f.request(admin, 'admin/overview')).data;
+  assert.equal(report.bills.length, 1); assert.equal(report.bills[0].amount, 115);
+  assert.equal(report.bills[0].student_id, alice.userId);
+  assert.equal((await f.request(admin, 'admin/bills', 'POST', { month: '2026-11', amount: 3200 })).status, 404);
 });
 
-test('shared menu and notices survive bootstrap, while student writes are denied', async t => {
+test('monthly totals group by meal date and exclude skipped or unattended meals', async t => {
+  const f = fixture(t); await f.bootstrap(alice); await f.profile(alice, 'B124001');
+  const book = f.db.sqlite.prepare('INSERT INTO bookings VALUES (?,?,?,?,?)');
+  const attend = f.db.sqlite.prepare('INSERT INTO attendance VALUES (?,?,?,?)');
+  for (const [date,meal,status,attended] of [['2026-10-31',1,'booked',true],['2026-11-01',0,'booked',true],['2026-11-02',0,'booked',true],['2026-11-03',2,'skipped',false],['2026-11-04',1,'booked',false]]) {
+    book.run(alice.userId,date,meal,status,'now');
+    if (attended) attend.run(alice.userId,date,meal,'now');
+  }
+  assert.deepEqual((await f.request(alice, 'state')).data.bills, [
+    { month:'2026-11', amount:60, status:'pending', mealCounts:[2,0,0] },
+    { month:'2026-10', amount:45, status:'pending', mealCounts:[0,1,0] },
+  ]);
+});
+
+test('shared menus survive bootstrap and students cannot edit them', async t => {
   const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice);
   const update = { weekday: 3, meal: 1, description: 'Special vegetable thali & curd', diet: 'Vegetarian' };
   assert.equal((await f.request(alice, 'admin/menu', 'PATCH', update)).status, 403);
   assert.equal((await f.request(admin, 'admin/menu', 'PATCH', update)).status, 200);
-  await f.request(admin, 'admin/notices', 'POST', { title: 'Lunch timing', body: 'Lunch will be served as scheduled today.' });
-  await f.request(admin, 'admin/notices', 'DELETE', { id: 'welcome' });
   const state = (await f.bootstrap(alice)).data;
   assert.equal(state.menus.find(item => item.weekday === 3 && item.meal === 1).description, update.description);
-  assert.deepEqual(state.notices.map(item => item.title), ['Lunch timing']);
 });
 
-test('feedback validation, user isolation, and admin review are persisted', async t => {
-  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice); await f.bootstrap(bob);
-  const feedback = { category: 'Food quality', rating: 4, message: '<img src=x onerror=alert(1)> Add seasonal fruit, please.' };
-  assert.equal((await f.request(alice, 'feedback', 'POST', { ...feedback, rating: 6 })).status, 400);
-  assert.equal((await f.request(alice, 'feedback', 'POST', { ...feedback, message: 'short' })).status, 400);
-  assert.equal((await f.request(alice, 'feedback', 'POST', feedback)).status, 201);
-  const saved = (await f.request(alice, 'state')).data.feedback[0];
-  assert.equal(saved.message, feedback.message);
-  assert.deepEqual((await f.request(bob, 'state')).data.feedback, []);
-  assert.equal((await f.request(alice, 'admin/feedback', 'PATCH', { id: saved.id, status: 'reviewed' })).status, 403);
-  assert.equal((await f.request(admin, 'admin/feedback', 'PATCH', { id: saved.id, status: 'reviewed' })).status, 200);
-  assert.equal((await f.request(alice, 'state')).data.feedback[0].status, 'reviewed');
+test('feedback and notification features are removed from state and routes', async t => {
+  const f = fixture(t); await f.bootstrap(admin); await f.bootstrap(alice);
+  for (const [identity,path,method,data] of [[alice,'feedback','POST',{category:'Food quality',rating:4,message:'Test feedback message'}],[admin,'admin/feedback','PATCH',{id:'test',status:'reviewed'}],[admin,'admin/notices','POST',{title:'Test notice',body:'A test announcement'}],[admin,'admin/notices','DELETE',{id:'welcome'}]]) {
+    assert.equal((await f.request(identity,path,method,data)).status, 404);
+  }
+  const state = (await f.request(alice,'state')).data;
+  assert.equal('feedback' in state,false); assert.equal('notices' in state,false);
+  const report = (await f.request(admin,'admin/overview')).data;
+  assert.equal('feedback' in report,false); assert.equal('openFeedback' in report.counts,false);
 });
 
 test('administrators can deactivate accounts but cannot disable their own access', async t => {
@@ -133,8 +157,8 @@ test('administrators can deactivate accounts but cannot disable their own access
 });
 
 test('oversized requests are rejected and database constraints reject invalid records', async t => {
-  const f = fixture(t); await f.bootstrap(alice);
-  assert.equal((await f.request(alice, 'feedback', 'POST', { message: 'a'.repeat(17000) })).status, 413);
+  const f = fixture(t); await f.bootstrap(alice); await f.profile(alice, 'B124001');
+  assert.equal((await f.request(alice, 'bookings', 'POST', { status: 'a'.repeat(17000) })).status, 413);
   assert.throws(() => f.db.sqlite.prepare('INSERT INTO attendance VALUES (?,?,?,?)').run('nonexistent', today, 0, 'now'), /FOREIGN KEY/);
   assert.throws(() => f.db.sqlite.prepare('UPDATE students SET role=? WHERE id=?').run('superuser', alice.userId), /CHECK constraint/);
 });

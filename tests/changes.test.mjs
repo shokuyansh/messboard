@@ -50,6 +50,7 @@ test('booking needs one session read and one write batch, and returns confirmed 
   assert.equal((await execute('SELECT COUNT(*) AS count FROM activity')).rows[0].count, 1);
   const checkin = await f.request('attendance', { date: state.data.today, meal: 1 }, user.cookie);
   assert.equal(checkin.status, 200); assert.ok(checkin.data.attendance.checkedAt);
+  assert.deepEqual(checkin.data.charge, { month: state.data.today.slice(0,7), meal:1, amount:45 });
   const locked = await f.request('bookings', { date: state.data.today, meal: 1, status: 'skipped' }, user.cookie);
   assert.equal(locked.status, 409);
   assert.equal((await execute('SELECT COUNT(*) AS count FROM activity')).rows[0].count, 2);
