@@ -82,47 +82,6 @@ Students use **Student registration** to create their accounts. After signing in
 
 Once the administrator account exists, changing `ADMIN_PASSWORD` in the environment does not change its stored password. Password recovery is not implemented.
 
-## Deploy to Vercel
-
-### 1. Create the database
-
-Create a hosted **libSQL** database in Turso. Copy its database URL and generate a database authentication token with read/write access. The URL should start with `libsql://` or `https://`.
-
-The application already includes `@libsql/client`. Leave the new database empty; the build will create the tables.
-
-### 2. Import the GitHub repository
-
-In Vercel, import the repository containing this project's `package.json` and `vercel.json`. Use these settings:
-
-| Setting | Value |
-| --- | --- |
-| Framework preset | Other |
-| Root directory | Repository root, or this project's subdirectory if using a monorepo |
-| Node.js version | 22.x |
-| Build command | `npm run build` |
-| Output directory | `public` |
-
-`vercel.json` defines API routing, response headers and the Mumbai function region (`bom1`). Keep the Turso database in Mumbai as well to reduce database round-trip latency.
-
-### 3. Add environment variables
-
-Set these values for the **Production** environment before deploying:
-
-| Variable | Value |
-| --- | --- |
-| `TURSO_DATABASE_URL` | The hosted database URL, such as `libsql://iiit-mess-your-org.turso.io` |
-| `TURSO_AUTH_TOKEN` | A read/write authentication token for that database |
-| `ADMIN_EMAIL` | The email used for the initial administrator login |
-| `ADMIN_PASSWORD` | A unique administrator password between 12 and 128 characters |
-
-Store credentials in Vercel's environment settings. `.env.local` is excluded from Git. File-based and in-memory database URLs are rejected on Vercel because they cannot provide persistent application storage.
-
-### 4. Deploy and sign in
-
-Deploy the project. The build validates the configuration and applies pending database migrations. Open the deployment URL and sign in with your configured administrator credentials.
-
-If you change environment values after a deployment, redeploy to apply them. Preview deployments also need environment values to build and use the API; give previews a separate database to keep test records and migrations away from production.
-
 ## Commands
 
 | Command | Purpose |
@@ -162,11 +121,4 @@ Passwords are stored as salted scrypt hashes. Sessions expire after seven days, 
 
 Email syntax is checked in the browser and API, with inline errors on sign-in and registration. This does not verify mailbox ownership. The API checks account roles on the server, limits login attempts per email and rejects cross-origin writes. Write requests require JSON and the `X-Mess-Request: 1` header. Database queries use bound parameters.
 
-## Current limits
 
-- Payments are handled by the mess manager. The application displays pending charges and does not collect payments or record settlements.
-- Attendance is reported by the student; it does not verify physical presence.
-- Charges are calculated from self-reported attendance. A check-in adds the fixed price for that meal to its calendar month.
-- New databases start with sample menus. There is no default monthly bill.
-- Email verification and password reset emails are not implemented. Registration does not verify institute membership.
-- Administrator views show up to 500 accounts, 500 monthly meal totals.
