@@ -25,8 +25,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .skip-link:focus { top: 12px; }
 .topbar { max-width: 1440px; margin: auto; padding: 24px 4vw; display: flex; align-items: center; gap: 36px; }
 .brand { display: flex; gap: 12px; align-items: center; font-size: 15px; font-weight: 800; letter-spacing: -.4px; white-space: nowrap; }
-.brand-symbol { position: relative; font-family: Georgia, serif; font-size: 30px; background: var(--accent); color: #fff9ec; width: 44px; height: 44px; display: grid; place-items: center; }
-.brand-symbol span { position: absolute; font: 14px Arial, sans-serif; top: 3px; right: 4px; }
+.brand-symbol { display: block; width: 44px; height: 44px; flex-shrink: 0; }
 .brand small { display: block; font: 9px monospace; letter-spacing: 2px; margin-top: 6px; color: var(--muted); }
 .topbar-left { flex: 1; }
 .breadcrumb { font-size: 11px; color: var(--muted); }
@@ -58,14 +57,9 @@ h2 { font-size: 22px; font-weight: 500; letter-spacing: -.6px; margin-bottom: 0;
 h3 { font-size: 17px; font-weight: 600; }
 p { line-height: 1.7; }
 .page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 34px; }
+.dashboard-heading h1 { font-size: 32px; letter-spacing: -.8px; }
 .page-heading p, .section-heading p { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 8px 0 0; }
 .date-box { display: flex; gap: 8px; align-items: center; font: 11px monospace; padding: 12px 0; white-space: nowrap; }
-.board-intro { display: flex; justify-content: space-between; gap: 30px; padding: 6px 0 32px; }
-.board-intro h1 { font-size: clamp(64px, 7vw, 96px); line-height: .96; letter-spacing: -4px; margin: 22px 0; }
-.board-intro p { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
-.board-date { border-left: 1px solid var(--line); min-width: 250px; text-align: center; display: flex; flex-direction: column; justify-content: center; padding: 20px; }
-.board-date span { font: 11px monospace; letter-spacing: 2px; text-transform: uppercase; }
-.board-date strong { font-family: Georgia, serif; font-size: clamp(100px, 12vw, 164px); line-height: 1.1; font-weight: 400; color: var(--accent); letter-spacing: -8px; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); margin-bottom: 36px; }
 .stat { padding: 22px; border-right: 1px solid var(--line); }
 .stat:first-child { padding-left: 0; }
@@ -77,7 +71,7 @@ p { line-height: 1.7; }
 .stat-value { font-size: 32px; letter-spacing: -1.3px; margin: 14px 0 8px; }
 .stat-value small { font-size: 14px; }
 .stat-note { font-size: 11px; color: var(--muted); line-height: 1.5; }
-.content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 40px; }
+.content-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
 .section-heading .eyebrow { margin-bottom: 8px; }
 .text-link { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 4px 0; color: var(--green); font-size: 12px; font-weight: 600; text-align: left; }
@@ -208,7 +202,7 @@ dialog::backdrop { background: #25251f88; }
 .auth-card form > .button { width: 100%; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 @media (max-width: 1380px) { .sidebar, main, footer { margin-left: 4vw; margin-right: 4vw; } .nav-link { padding-left: 10px; padding-right: 10px; } .sidebar { gap: 10px; } }
-@media (max-width: 1100px) { .content-grid { grid-template-columns: minmax(0, 1fr) 250px; gap: 24px; } .nav-link svg { display: none; } .student-profile .avatar { display: none; } .topbar-left { display: none; } .topbar-right { margin-left: auto; } .meal-top { flex-wrap: wrap; } }
+@media (max-width: 1100px) { .nav-link svg { display: none; } .student-profile .avatar { display: none; } .topbar-left { display: none; } .topbar-right { margin-left: auto; } .meal-top { flex-wrap: wrap; } }
 @media (max-width: 800px) {
   .topbar { padding: 20px 4vw; gap: 15px; }
   .brand { font-size: 12px; }
@@ -223,10 +217,6 @@ dialog::backdrop { background: #25251f88; }
   .sidebar-bottom { padding: 8px 12px; border-top: 1px solid var(--line); }
   .student-profile .avatar { display: grid; }
   main { padding-top: 28px; }
-  .board-intro h1 { font-size: 72px; }
-  .board-date { min-width: 180px; padding: 10px; }
-  .board-date strong { font-size: 110px; }
-  .board-date span { font-size: 9px; letter-spacing: 1px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .stat { padding: 18px; }
   .stat:nth-child(2) { border-right: 0; }
@@ -248,16 +238,9 @@ dialog::backdrop { background: #25251f88; }
   .topbar-right > .text-link { font-size: 10px; }
   #header-profile { display: none; }
   #notification-button { padding: 5px; }
-  .brand-symbol { width: 33px; height: 37px; font-size: 25px; }
+  .brand-symbol { width: 36px; height: 36px; }
   .brand { gap: 7px; font-size: 10px; }
   .brand small { font-size: 7px; }
-  .board-intro { gap: 12px; }
-  .board-intro h1 { font-size: 54px; letter-spacing: -2.5px; }
-  .board-intro .eyebrow { font-size: 8px; letter-spacing: 1px; }
-  .board-intro p { font-size: 12px; }
-  .board-date { min-width: 105px; padding: 0 0 0 10px; }
-  .board-date strong { font-size: 82px; letter-spacing: -4px; }
-  .board-date span { font-size: 8px; }
   .stat-label { font-size: 9px; }
   .stat-note { font-size: 10px; }
   .stat-icon { display: none; }

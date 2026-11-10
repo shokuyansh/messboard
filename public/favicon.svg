@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#c44620" d="M0 0h64v64H0z"/><text x="32" y="47" text-anchor="middle" fill="#fffdf8" font-family="Georgia,serif" font-size="44">M</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#c44620"/>
+  <g stroke="#fffdf8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="32" r="14"/>
+    <circle cx="32" cy="32" r="9" stroke-width="1.6"/>
+    <path d="M11 16v9c0 4 6 4 6 0v-9m-3 0v32m39-32c-5 4-6 12-6 17h6m0-17v32"/>
+  </g>
+</svg>
