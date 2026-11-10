@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#172d2b"><meta name="description" content="IIIT Bhubaneswar Mess Management System"><title>Mess Hub · IIIT Bhubaneswar</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script></head><body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="#dashboard"><span class="brand-symbol">m<span>✳</span></span><span>mess<span class="brand-light">hub</span><small>IIIT BHUBANESWAR</small></span></a>
+    <div class="workspace-label">CAMPUS WORKSPACE</div>
+    <nav id="navigation"></nav>
+    <div class="sidebar-bottom">
+      <div class="help-card"><span class="help-symbol">✦</span><h3>A better mess,<br>starts with you.</h3><p>Small suggestions.<br>Better meals for everyone.</p><a href="#feedback">Share feedback <span>↗</span></a></div>
+      <button class="student-profile" id="profile-button"><span class="avatar" id="sidebar-initials">·</span><span><strong id="sidebar-name">Loading profile…</strong><small id="sidebar-roll">Sign in to continue</small></span><span class="profile-arrow">⌘</span></button>
+      <span class="project-label">Connected to campus database</span>
+    </div>
+  </aside>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="topbar-left"><button class="icon-button mobile-menu" id="menu-toggle" aria-label="Open navigation" aria-expanded="false"></button><span class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Overview</strong></span></div>
+      <div class="topbar-right"><button class="text-link" data-action="refresh" aria-label="Refresh data">↻ Refresh</button><button class="text-link" data-action="logout">Sign out</button><span class="header-divider"></span><button class="icon-button notification-button" id="notification-button" aria-label="View announcements"></button><button class="avatar small" id="header-profile" aria-label="Edit your profile">·</button></div>
+    </header>
+    <main id="main" tabindex="-1"><div class="empty-state">Connecting to your mess workspace…</div></main>
+    <footer><span>Made for the campus. Built around you.</span><span>IIIT Bhubaneswar <span class="footer-dot">·</span> Mess Hub</span></footer>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title"></h2><button class="icon-button" id="close-modal" aria-label="Close dialog">✕</button></div><div id="modal-body"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body></html>
